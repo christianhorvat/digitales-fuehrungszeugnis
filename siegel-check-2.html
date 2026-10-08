@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Siegel-Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0d0e; --panel: #15181a; --panel2: #1b1f22; --border: #272c2f;
+    --text: #e7eaeb; --dim: #8a9296; --accent: #5b8cff; --accent-dim: #2d3f73;
+    --ok: #39c98f; --ok-bg: #0f2a21; --fail: #ff6464; --fail-bg: #2c1414;
+    --warn: #e3b341;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f5f6; --panel: #ffffff; --panel2: #eef0f1; --border: #dadddf;
+      --text: #15181a; --dim: #5c6468; --accent: #2a5edb; --accent-dim: #dbe4fb;
+      --ok: #1b8f63; --ok-bg: #e4f6ee; --fail: #c62f2f; --fail-bg: #fbe8e8;
+      --warn: #8a6300;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0d0e; --panel: #15181a; --panel2: #1b1f22; --border: #272c2f;
+    --text: #e7eaeb; --dim: #8a9296; --accent: #5b8cff; --accent-dim: #2d3f73;
+    --ok: #39c98f; --ok-bg: #0f2a21; --fail: #ff6464; --fail-bg: #2c1414;
+    --warn: #e3b341;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: calc(28px + env(safe-area-inset-top, 0px)) 18px calc(40px + env(safe-area-inset-bottom, 0px));
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 620px; margin: 0 auto; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  h1 { font-family: "JetBrains Mono", monospace; font-size: 22px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); font-size: 14.5px; line-height: 1.5; margin: 0 0 26px; max-width: 54ch; }
+  #drop {
+    border: 1.5px dashed var(--border); border-radius: 10px; padding: 36px 20px;
+    text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  #drop.over { border-color: var(--accent); background: var(--accent-dim); }
+  #drop p { margin: 0; color: var(--dim); font-size: 14.5px; }
+  #drop strong { color: var(--text); font-weight: 600; }
+  #drop input { display: none; }
+  #status { margin-top: 18px; font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--dim); min-height: 18px; }
+  #result { margin-top: 10px; display: none; }
+  .verdict { border-radius: 10px; padding: 16px 18px; font-family: "JetBrains Mono", monospace; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .verdict.ok { background: var(--ok-bg); color: var(--ok); }
+  .verdict.fail { background: var(--fail-bg); color: var(--fail); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: none; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13.5px; }
+  td { padding: 9px 0; border-top: 1px solid var(--border); vertical-align: top; }
+  td.k { color: var(--dim); width: 38%; padding-right: 12px; font-family: "JetBrains Mono", monospace; font-size: 12.5px; }
+  td.v { font-family: "JetBrains Mono", monospace; word-break: break-word; }
+  .chip { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 11.5px; font-weight: 600; }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); }
+  .chip.fail { background: var(--fail-bg); color: var(--fail); }
+  details { margin-top: 18px; }
+  summary { cursor: pointer; color: var(--dim); font-size: 13px; font-family: "JetBrains Mono", monospace; }
+  .feat { font-size: 12.5px; font-family: "JetBrains Mono", monospace; padding: 6px 0; border-top: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; }
+  .feat b { color: var(--dim); font-weight: 500; }
+  footer { margin-top: 30px; color: var(--dim); font-size: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Siegel-Check</h1>
+  <p class="sub">Prüft das digitale Siegel (QR-Code) eines Behördendokuments lokal im Browser — Signatur, Zertifikat und Gültigkeitszeitraum. Nichts wird hochgeladen.</p>
+
+  <div id="drop">
+    <p><strong>Siegel-Bild hierher ziehen</strong><br>oder klicken zum Auswählen</p>
+    <input type="file" id="file" accept="image/*">
+  </div>
+  <div id="status"></div>
+  <div id="result"></div>
+
+  <footer>Trust-Anchors fest eingebettet (DEHH, DEST, DEZV / BFJ-Siegel, Stand 1.4.1). Prüfung läuft vollständig per Web Crypto im Browser, kein Netzwerkzugriff nach dem Laden.</footer>
+</main>
+
+<script>
+const CERTS = [{"signer": "DEHH", "ref": "49A", "file": "VFOPSA01_[CA]_HH.cer", "b64": "MIIClzCCAfygAwIBAgICBJowCgYIKoZIzj0EAwQwQTELMAkGA1UEBhMCREUxDTALBgNVBAoMBGJ1bmQxDDAKBgNVBAsMA2JzaTEVMBMGA1UEAwwMY3NjYS1nZXJtYW55MB4XDTIyMDQwNjA1MTgwNloXDTMzMDUwNjIzNTk1OVowGjELMAkGA1UEBhMCREUxCzAJBgNVBAMTAkhIMIIBEzCB1AYHKoZIzj0CATCByAIBATAoBgcqhkjOPQEBAh0A18E0qiZDZoYqGDAlddHXh7CfB1eX2on1fsjA/zA8BBxopeYsqc5sHCmYA6bBUwtRThgq2LAEKlnK0p9DBBwlgPY8z+RBOIcHE7GpI2njPiE10mbbs3I4bEALBDkEDZAprSx+XPQ0CCOyqH3GjJ5M4xdMHm797hLAfViqVvdywHJvJMa4nk7NrCQ1S56ZyqP203YUAs0CHQDXwTSqJkNmhioYMCV10PuY0Ra8S23evKOlp5OfAgEBAzoABFazByhB67ir48Fwn0mfTjvd3JrE58BiOXXDhFtG0Phsjw7Y8Tu+cpUFN2+zmekN29Giwqb126y7o08wTTAfBgNVHSMEGDAWgBSkCl/DgK4+Wa8bMtYTau/uyMo16DASBgNVHSUECzAJBgdngQgBAQsBMBYGB2eBCAEBBgIECzAJAgEAMQQTAlNUMAoGCCqGSM49BAMEA4GIADCBhAJAXI4pGn3jERtNT7i31a/s3e0mDFXvfTgr+coj3MUNx/tfPlnn9IsS7F6gen0+oI3tpifuHA+K8ZNmJWOfoEPg6QJAMVO3KjEbDq1Ll8lt7ZflsitJ85UVdPYGGecVq7WCH3DB3xzyhzk1Q6+pCD2ShVV42Ovj4YC3A8r6GvOAOAF80g=="}, {"signer": "DEHH", "ref": "4AB", "file": "VFOPSA02_[CA]_HH.cer", "b64": "MIIClzCCAfygAwIBAgICBKswCgYIKoZIzj0EAwQwQTELMAkGA1UEBhMCREUxDTALBgNVBAoMBGJ1bmQxDDAKBgNVBAsMA2JzaTEVMBMGA1UEAwwMY3NjYS1nZXJtYW55MB4XDTIzMDQwMzA2MTMxOVoXDTM0MDUwMzIzNTk1OVowGjELMAkGA1UEBhMCREUxCzAJBgNVBAMTAkhIMIIBEzCB1AYHKoZIzj0CATCByAIBATAoBgcqhkjOPQEBAh0A18E0qiZDZoYqGDAlddHXh7CfB1eX2on1fsjA/zA8BBxopeYsqc5sHCmYA6bBUwtRThgq2LAEKlnK0p9DBBwlgPY8z+RBOIcHE7GpI2njPiE10mbbs3I4bEALBDkEDZAprSx+XPQ0CCOyqH3GjJ5M4xdMHm797hLAfViqVvdywHJvJMa4nk7NrCQ1S56ZyqP203YUAs0CHQDXwTSqJkNmhioYMCV10PuY0Ra8S23evKOlp5OfAgEBAzoABINowUi2hc+91vDHLbDiH1DmE95ohJ/uMD8Elq4TDYClhLH6WOyKznAaVo7HHtjgXjFKaHkd6O5lo08wTTAfBgNVHSMEGDAWgBSkCl/DgK4+Wa8bMtYTau/uyMo16DASBgNVHSUECzAJBgdngQgBAQsBMBYGB2eBCAEBBgIECzAJAgEAMQQTAlNUMAoGCCqGSM49BAMEA4GIADCBhAJAARdJlSaZG8cxwUqUOxPnEyox8ZrORKRDtlKVc9U10VdiOad13w8xFvZXRDbAlSzAtk+BCEbXcQuFLhzka22xJAJAS/MTDXJJHFSqFRW2GPfWSV2lZjdqt9uVEYiz9o0cZGKdrcP3nzqDZZkhJ2QhDB8gaFaz7sJUYuAGbZ9T+2Kr6A=="}, {"signer": "DEST", "ref": "4C3", "file": "VFOPSA06_[CA]_ST.cer", "b64": "MIICmzCCAf+gAwIBAgICBMMwCgYIKoZIzj0EAwQwQTELMAkGA1UEBhMCREUxDTALBgNVBAoMBGJ1bmQxDDAKBgNVBAsMA2JzaTEVMBMGA1UEAwwMY3NjYS1nZXJtYW55MB4XDTI0MDQxODA1NDc1NVoXDTM1MDUxODIzNTk1OVowGjELMAkGA1UEBhMCREUxCzAJBgNVBAMTAlNUMIIBEzCB1AYHKoZIzj0CATCByAIBATAoBgcqhkjOPQEBAh0A18E0qiZDZoYqGDAlddHXh7CfB1eX2on1fsjA/zA8BBxopeYsqc5sHCmYA6bBUwtRThgq2LAEKlnK0p9DBBwlgPY8z+RBOIcHE7GpI2njPiE10mbbs3I4bEALBDkEDZAprSx+XPQ0CCOyqH3GjJ5M4xdMHm797hLAfViqVvdywHJvJMa4nk7NrCQ1S56ZyqP203YUAs0CHQDXwTSqJkNmhioYMCV10PuY0Ra8S23evKOlp5OfAgEBAzoABHR7nZW4oUUaM4FBXsvbWNC7Br2kI8hfAYen6SJ1nKiSg7sKr28l7kBLOA1v99kFPS0HDxSSAsAYo1IwUDAfBgNVHSMEGDAWgBSkCl/DgK4+Wa8bMtYTau/uyMo16DAVBgNVHSUBAf8ECzAJBgdngQgBAQsBMBYGB2eBCAEBBgIECzAJAgEAMQQTAlNUMAoGCCqGSM49BAMEA4GJADCBhQJBAIXUi3yhwadyv4pgqOAyHPRa28EhYJzImDhBCGiSd0TbZv23jymPpG5+lgTbZ3O/xBSwWBJAdZLG4XBTtycUIBMCQAHVOEaZAxfCKMyD4VFOagGtLClYFCfRLvRrTcLWeKk6PelKt+gWKygip1GCtZBn3njzpd/ugLAKTQkYn+TvR0E="}, {"signer": "DEST", "ref": "4EC", "file": "VFOPSA11_[CA]_ST_04ec.cer", "b64": "MIICmjCCAf+gAwIBAgICBOwwCgYIKoZIzj0EAwQwQTELMAkGA1UEBhMCREUxDTALBgNVBAoMBGJ1bmQxDDAKBgNVBAsMA2JzaTEVMBMGA1UEAwwMY3NjYS1nZXJtYW55MB4XDTI1MDQxNDA4NDQzNloXDTM2MDUxNDIzNTk1OVowGjELMAkGA1UEBhMCREUxCzAJBgNVBAMTAlNUMIIBEzCB1AYHKoZIzj0CATCByAIBATAoBgcqhkjOPQEBAh0A18E0qiZDZoYqGDAlddHXh7CfB1eX2on1fsjA/zA8BBxopeYsqc5sHCmYA6bBUwtRThgq2LAEKlnK0p9DBBwlgPY8z+RBOIcHE7GpI2njPiE10mbbs3I4bEALBDkEDZAprSx+XPQ0CCOyqH3GjJ5M4xdMHm797hLAfViqVvdywHJvJMa4nk7NrCQ1S56ZyqP203YUAs0CHQDXwTSqJkNmhioYMCV10PuY0Ra8S23evKOlp5OfAgEBAzoABGS8Y9uZV+fb3ikrznJtf47Og/7InD0ONLi/xfgwcJ6fuP1FuK7ElSDMePukCY7hNPiTofsOpdkXo1IwUDAfBgNVHSMEGDAWgBTopimT6uIIqiA+Sddkm7rhujVgyzAVBgNVHSUBAf8ECzAJBgdngQgBAQsBMBYGB2eBCAEBBgIECzAJAgEAMQQTAlNUMAoGCCqGSM49BAMEA4GIADCBhAJAdotF59CcO2VJQPU5P05Nx3dnqVQ+6woi7byjbfDD0adt+lMF+B275qAEOGim/feF+ziWwpGjrWGMdxQfX9+Z0QJAcYp5qWj6yvEoNozLhlB7KtZ7iySjI2/0NKVXj97nCK1I7DLqTamtsPGGW8JrvK0d0spfPXV8qmYkaak23vyMcw=="}, {"signer": "DEST", "ref": "509", "file": "VFOPSA12_[CA]_ST-0509.cer", "b64": "MIICmjCCAf+gAwIBAgICBQkwCgYIKoZIzj0EAwQwQTELMAkGA1UEBhMCREUxDTALBgNVBAoMBGJ1bmQxDDAKBgNVBAsMA2JzaTEVMBMGA1UEAwwMY3NjYS1nZXJtYW55MB4XDTI2MDQzMDExMTgxMFoXDTM3MDUzMDIzNTk1OVowGjELMAkGA1UEBhMCREUxCzAJBgNVBAMTAlNUMIIBEzCB1AYHKoZIzj0CATCByAIBATAoBgcqhkjOPQEBAh0A18E0qiZDZoYqGDAlddHXh7CfB1eX2on1fsjA/zA8BBxopeYsqc5sHCmYA6bBUwtRThgq2LAEKlnK0p9DBBwlgPY8z+RBOIcHE7GpI2njPiE10mbbs3I4bEALBDkEDZAprSx+XPQ0CCOyqH3GjJ5M4xdMHm797hLAfViqVvdywHJvJMa4nk7NrCQ1S56ZyqP203YUAs0CHQDXwTSqJkNmhioYMCV10PuY0Ra8S23evKOlp5OfAgEBAzoABBXNgSO0FE5siMXqlu9DliZPSW6usqydqlMqW6AjOqGqXKwRuETSErYH7axmfOE6WW8gEV7lMLkeo1IwUDAfBgNVHSMEGDAWgBTopimT6uIIqiA+Sddkm7rhujVgyzAVBgNVHSUBAf8ECzAJBgdngQgBAQsBMBYGB2eBCAEBBgIECzAJAgEAMQQTAlNUMAoGCCqGSM49BAMEA4GIADCBhAJAXv4lC3cK/inOSAwEm05XaYi1qx6KrNuFepUDMVG9KSCMii0EVQ04TvXXL2ovC+iXOrCFiJHncUbEvFJbq2LJeQJAae6f2e6c7tspfs29M6ZJPECOaT38Mpq3jdkTLYdFO+i9iP0Q+Sg++8pDTPfwLdYe4ZeWOWB/SgEy8pddQKeXPw=="}, {"signer": "DEZV", "ref": "EC73189D55304E38B9FD8A89617308D7", "file": "MB_HAMBURG_SIGNER_2024-05-28T14-39-33-2527097.cer", "b64": "MIIG+zCCBoGgAwIBAgIQdMIfoXrvEI4fO95vNBvpPjAKBggqhkjOPQQDAzBeMQswCQYDVQQGEwJERTEVMBMGA1UEChMMRC1UcnVzdCBHbWJIMR8wHQYDVQQDExZELVRSVVNUIENBIDQtMjEtMiAyMDIxMRcwFQYDVQRhEw5OVFJERS1IUkI3NDM0NjAeFw0yNDA1MjgxMjQzMzVaFw0yNjA2MDExMjQzMzVaMIIBEjELMAkGA1UEBhMCREUxJTAjBgNVBAoTHEZyZWllIHVuZCBIYW5zZXN0YWR0IEhhbWJ1cmcxNjA0BgNVBAsMLVNlbmF0c2thbnpsZWkgQW10IGbDvHIgSVQgdW5kIERpZ2l0YWxpc2llcnVuZzElMCMGA1UEAxMcRnJlaWUgdW5kIEhhbnNlc3RhZHQgSGFtYnVyZzEQMA4GA1UEBxMHSGFtYnVyZzEOMAwGA1UEEQwFMjAwOTUxFzAVBgNVBAkTDlJhdGhhdXNtYXJrdCAxMRkwFwYDVQRhExBEVDpERS0yNzYzMzA5NTQyMRUwEwYDVQQFEwxDU00wNDE2ODQ2MDExEDAOBgNVBAgTB0hhbWJ1cmcwggEzMIHsBgcqhkjOPQIBMIHgAgEBMCwGByqGSM49AQECIQD/////AAAAAQAAAAAAAAAAAAAAAP///////////////zBEBCD/////AAAAAQAAAAAAAAAAAAAAAP///////////////AQgWsY12Ko6k+ez671VdpiGvGUdBrDMU7D2O848PifSYEsEQQRrF9Hy4SxCR/i85uVjpEDydwN9gS3rM6D0oTlF2JjClk/jQuL+Gn+bjufrSnwPnhYrzjNXazFezsu2QGg3v1H1AiEA/////wAAAAD//////////7zm+q2nF56E87nKwvxjJVECAQEDQgAES57a7TsaA/qbld8ZkIpAfpnmnyn/6uUj9J0miYXRlUL6HntZOjDbzA7mL/nepzGJ3Rw1M0zu2QL1sw90gY8w56OCA40wggOJMB8GA1UdIwQYMBaAFLZHrcrCLTgyI64ofjoQETe9u/pgMIG9BggrBgEFBQcBAwSBsDCBrTAIBgYEAI5GAQEwgYsGBgQAjkYBBTCBgDA+FjhodHRwOi8vd3d3LmQtdHJ1c3QubmV0L2ludGVybmV0L2ZpbGVzL0QtVFJVU1RfUEtJX0RTLnBkZhMCZGUwPhY4aHR0cDovL3d3dy5kLXRydXN0Lm5ldC9pbnRlcm5ldC9maWxlcy9ELVRSVVNUX1BLSV9EUy5wZGYTAmVuMBMGBgQAjkYBBjAJBgcEAI5GAQYCMIIBBwYIKwYBBQUHAQEEgfowgfcwOgYIKwYBBQUHMAGGLmh0dHA6Ly9kLXRydXN0LWNhLTQtMjEtMi0yMDIxLm9jc3AuZC10cnVzdC5uZXQwRQYIKwYBBQUHMAKGOWh0dHA6Ly93d3cuZC10cnVzdC5uZXQvY2dpLWJpbi9ELVRSVVNUX0NBXzQtMjEtMl8yMDIxLmNydDByBggrBgEFBQcwAoZmbGRhcDovL2RpcmVjdG9yeS5kLXRydXN0Lm5ldC9DTj1ELVRSVVNUJTIwQ0ElMjA0LTIxLTIlMjAyMDIxLE89RC1UcnVzdCUyMEdtYkgsQz1ERT9jQUNlcnRpZmljYXRlP2Jhc2U/MHAGA1UdIARpMGcwCQYHBACL7EABATBaBgsrBgEEAaU0AoEWBTBLMEkGCCsGAQUFBwIBFj1odHRwOi8vd3d3LmQtdHJ1c3QubmV0L2ludGVybmV0L2ZpbGVzL0QtVFJVU1RfQ1NNX1BLSV9DUFMucGRmMIH5BgNVHR8EgfEwge4wgeuggeiggeWGNWh0dHA6Ly9jcmwuZC10cnVzdC5uZXQvY3JsL2QtdHJ1c3RfY2FfNC0yMS0yXzIwMjEuY3Jshj5odHRwOi8vY2RuLmQtdHJ1c3QtY2xvdWRjcmwubmV0L2NybC9kLXRydXN0X2NhXzQtMjEtMl8yMDIxLmNybIZsbGRhcDovL2RpcmVjdG9yeS5kLXRydXN0Lm5ldC9DTj1ELVRSVVNUJTIwQ0ElMjA0LTIxLTIlMjAyMDIxLE89RC1UcnVzdCUyMEdtYkgsQz1ERT9jZXJ0aWZpY2F0ZXJldm9jYXRpb25saXN0MB0GA1UdDgQWBBSgp/Q6YRC2pWWM3jpmPwMEOH8B5jAOBgNVHQ8BAf8EBAMCBsAwCgYIKoZIzj0EAwMDaAAwZQIwHQJDENQMrQboiAkcD3A8lokFX2O0B2T49C+E9YogqN6Sv7KHGvAMItX3ftaHu9E3AjEAhh9RQvUA5+rJeVFdzn4REK7mJwKC+tITohTnOSn5icmyf59iRABA1ZtfRyDGvUID"}, {"signer": "DEZV", "ref": "D6CDCD72FDA243E2ADF13CBD2A0824E8", "file": "MB_HAMBURG_SIGNER_2026-05-27T09-50-14-414938821.cer", "b64": "MIIG/jCCBoOgAwIBAgIQRGBszIJFmpLA+Nh+BmlKXjAKBggqhkjOPQQDAzBeMQswCQYDVQQGEwJERTEVMBMGA1UEChMMRC1UcnVzdCBHbWJIMR8wHQYDVQQDExZELVRSVVNUIENBIDQtMjEtMiAyMDIxMRcwFQYDVQRhEw5OVFJERS1IUkI3NDM0NjAeFw0yNjA1MjcwNzUzMTlaFw0yODA1MjkwNzUzMTlaMIIBEjELMAkGA1UEBhMCREUxJTAjBgNVBAoTHEZyZWllIHVuZCBIYW5zZXN0YWR0IEhhbWJ1cmcxNjA0BgNVBAsMLVNlbmF0c2thbnpsZWkgQW10IGbDvHIgSVQgdW5kIERpZ2l0YWxpc2llcnVuZzElMCMGA1UEAxMcRnJlaWUgdW5kIEhhbnNlc3RhZHQgSGFtYnVyZzEQMA4GA1UEBxMHSGFtYnVyZzEOMAwGA1UEEQwFMjAwOTUxFzAVBgNVBAkTDlJhdGhhdXNtYXJrdCAxMRkwFwYDVQRhExBEVDpERS0yNzYzMzA5NTQyMRUwEwYDVQQFEwxDU00wNTc3NjU1OTAxEDAOBgNVBAgTB0hhbWJ1cmcwggEzMIHsBgcqhkjOPQIBMIHgAgEBMCwGByqGSM49AQECIQD/////AAAAAQAAAAAAAAAAAAAAAP///////////////zBEBCD/////AAAAAQAAAAAAAAAAAAAAAP///////////////AQgWsY12Ko6k+ez671VdpiGvGUdBrDMU7D2O848PifSYEsEQQRrF9Hy4SxCR/i85uVjpEDydwN9gS3rM6D0oTlF2JjClk/jQuL+Gn+bjufrSnwPnhYrzjNXazFezsu2QGg3v1H1AiEA/////wAAAAD//////////7zm+q2nF56E87nKwvxjJVECAQEDQgAEYDD54IvudAkxOtY26P0PtUZ3lGmF4LVoa+o0gshwk/V3sjyttaoySbrIZKcRzNh4Bmhwj1soTOvduu5Qaqw1yaOCA48wggOLMB8GA1UdIwQYMBaAFLZHrcrCLTgyI64ofjoQETe9u/pgMIG/BggrBgEFBQcBAwSBsjCBrzAIBgYEAI5GAQEwgY0GBgQAjkYBBTCBgjA/FjlodHRwczovL3d3dy5kLXRydXN0Lm5ldC9pbnRlcm5ldC9maWxlcy9ELVRSVVNUX1BLSV9EUy5wZGYTAmRlMD8WOWh0dHBzOi8vd3d3LmQtdHJ1c3QubmV0L2ludGVybmV0L2ZpbGVzL0QtVFJVU1RfUEtJX0RTLnBkZhMCZW4wEwYGBACORgEGMAkGBwQAjkYBBgIwggEHBggrBgEFBQcBAQSB+jCB9zA6BggrBgEFBQcwAYYuaHR0cDovL2QtdHJ1c3QtY2EtNC0yMS0yLTIwMjEub2NzcC5kLXRydXN0Lm5ldDBFBggrBgEFBQcwAoY5aHR0cDovL3d3dy5kLXRydXN0Lm5ldC9jZ2ktYmluL0QtVFJVU1RfQ0FfNC0yMS0yXzIwMjEuY3J0MHIGCCsGAQUFBzAChmZsZGFwOi8vZGlyZWN0b3J5LmQtdHJ1c3QubmV0L0NOPUQtVFJVU1QlMjBDQSUyMDQtMjEtMiUyMDIwMjEsTz1ELVRydXN0JTIwR21iSCxDPURFP2NBQ2VydGlmaWNhdGU/YmFzZT8wcAYDVR0gBGkwZzAJBgcEAIvsQAEBMFoGCysGAQQBpTQCgRYFMEswSQYIKwYBBQUHAgEWPWh0dHA6Ly93d3cuZC10cnVzdC5uZXQvaW50ZXJuZXQvZmlsZXMvRC1UUlVTVF9DU01fUEtJX0NQUy5wZGYwgfkGA1UdHwSB8TCB7jCB66CB6KCB5YY1aHR0cDovL2NybC5kLXRydXN0Lm5ldC9jcmwvZC10cnVzdF9jYV80LTIxLTJfMjAyMS5jcmyGPmh0dHA6Ly9jZG4uZC10cnVzdC1jbG91ZGNybC5uZXQvY3JsL2QtdHJ1c3RfY2FfNC0yMS0yXzIwMjEuY3JshmxsZGFwOi8vZGlyZWN0b3J5LmQtdHJ1c3QubmV0L0NOPUQtVFJVU1QlMjBDQSUyMDQtMjEtMiUyMDIwMjEsTz1ELVRydXN0JTIwR21iSCxDPURFP2NlcnRpZmljYXRlcmV2b2NhdGlvbmxpc3QwHQYDVR0OBBYEFFYHA6cIhFnWKt+mjqT9colyYdrkMA4GA1UdDwEB/wQEAwIGwDAKBggqhkjOPQQDAwNpADBmAjEAnn6mLMj5/Zv8N3E6Fd3ZyhKAtNmFH+pW30u7BNxkAaWKY/ypWfbsU4bIHaNw9Er1AjEAuY9f0KnTOZyYWnOKzWF5SQ9urkoyVE+EHQ4GeiFAi+u+JdQp93NCvKMarg3q3poj"}, {"signer": "DEZV", "ref": "F013E6C57EB640C0B9E8E4E0E2FCAFC4", "file": "BFJ_SIGNER_sealme_certificate_prod_2026-09-16.cer", "b64": "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"}];
+
+/* ---- DER (minimal, generisch) ---- */
+function derNodes(b, start, end) {
+  const out = []; let p = start;
+  while (p < end) {
+    const tag = b[p]; let len = b[p+1]; let hlen = 2;
+    if (len & 0x80) { const n = len & 0x7f; len = 0; for (let i=0;i<n;i++) len=(len<<8)|b[p+2+i]; hlen = 2+n; }
+    const cstart = p+hlen, cend = cstart+len;
+    out.push({tag, start:p, cstart, cend, constructed: !!(tag & 0x20)});
+    p = cend;
+  }
+  return out;
+}
+function walkAll(b, start, end, acc) {
+  for (const n of derNodes(b,start,end)) { acc.push(n); if (n.constructed) walkAll(b,n.cstart,n.cend,acc); }
+  return acc;
+}
+function bytesEq(b, off, arr){ for (let i=0;i<arr.length;i++) if (b[off+i]!==arr[i]) return false; return true; }
+function findOidNode(all,b,oid){ return all.find(n=>n.tag===0x06 && (n.cend-n.cstart)===oid.length && bytesEq(b,n.cstart,oid)); }
+const OID_EC=[0x2A,0x86,0x48,0xCE,0x3D,0x02,0x01], OID_P256=[0x2A,0x86,0x48,0xCE,0x3D,0x03,0x01,0x07],
+      OID_P384=[0x2B,0x81,0x04,0x00,0x22], OID_P521=[0x2B,0x81,0x04,0x00,0x23], OID_PKUP=[0x55,0x1D,0x10];
+
+function extractSpkiAndCurve(der) {
+  const all = walkAll(der,0,der.length,[]);
+  const ecOid = findOidNode(all,der,OID_EC);
+  if (!ecOid) throw new Error('kein EC-Schlüssel (Kurve nicht unterstützt)');
+  const seqs = all.filter(n=>n.tag===0x30);
+  let algId=null;
+  for (const s of seqs){ const k=derNodes(der,s.cstart,s.cend); if (k.length && k[0].start===ecOid.start){ algId={node:s,kids:k}; break; } }
+  if (!algId) throw new Error('AlgorithmIdentifier nicht gefunden');
+  const cb = der.slice(algId.kids[1].cstart, algId.kids[1].cend);
+  let curve=null;
+  if (cb.length===OID_P256.length && bytesEq(cb,0,OID_P256)) curve='P-256';
+  else if (cb.length===OID_P384.length && bytesEq(cb,0,OID_P384)) curve='P-384';
+  else if (cb.length===OID_P521.length && bytesEq(cb,0,OID_P521)) curve='P-521';
+  else throw new Error('Kurve nicht unterstützt (nur P-256/P-384/P-521)');
+  let spki=null;
+  for (const s of seqs){ const k=derNodes(der,s.cstart,s.cend); if (k.length===2 && k[0].start===algId.node.start){ spki=s; break; } }
+  if (!spki) throw new Error('SubjectPublicKeyInfo nicht gefunden');
+  return { spkiDer: der.slice(spki.start, spki.cend), curve };
+}
+function parseTimeNode(b,n){
+  const s = new TextDecoder().decode(b.slice(n.cstart,n.cend)); let y, rest;
+  if (n.tag===0x17){ const yy=parseInt(s.slice(0,2),10); y = yy<50?2000+yy:1900+yy; rest=s.slice(2); }
+  else { y=parseInt(s.slice(0,4),10); rest=s.slice(4); }
+  return `${y}-${rest.slice(0,2)}-${rest.slice(2,4)}`;
+}
+function extractValidity(der){
+  const all = walkAll(der,0,der.length,[]);
+  for (const s of all.filter(n=>n.tag===0x30)){
+    const k = derNodes(der,s.cstart,s.cend);
+    if (k.length===2 && k.every(x=>x.tag===0x17||x.tag===0x18)) return [parseTimeNode(der,k[0]), parseTimeNode(der,k[1])];
+  }
+  throw new Error('Validity nicht gefunden');
+}
+function extractPkup(der){
+  const all = walkAll(der,0,der.length,[]);
+  const oid = findOidNode(all,der,OID_PKUP);
+  if (!oid) return [null,null];
+  const seqs = all.filter(n=>n.tag===0x30);
+  const extSeq = seqs.find(s=>{ const k=derNodes(der,s.cstart,s.cend); return k.length && k[0].start===oid.start; });
+  if (!extSeq) return [null,null];
+  const k = derNodes(der, extSeq.cstart, extSeq.cend);
+  const octet = k.find(x=>x.tag===0x04);
+  if (!octet) return [null,null];
+  const inner = derNodes(der, octet.cstart, octet.cend);
+  if (!inner.length || !inner[0].constructed) return [null,null];
+  const parts = derNodes(der, inner[0].cstart, inner[0].cend);
+  let nb=null, na=null;
+  for (const p of parts){
+    const s = new TextDecoder().decode(der.slice(p.cstart,p.cend));
+    const d = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+    if (p.tag===0x80) nb=d; else if (p.tag===0x81) na=d;
+  }
+  return [nb,na];
+}
+async function sha1Hex(der){
+  const h = await crypto.subtle.digest('SHA-1', der);
+  return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();
+}
+
+/* ---- C40 ---- */
+const C40 = {3:' '}; for (let i=0;i<10;i++) C40[4+i]=String(i); for (let i=0;i<26;i++) C40[14+i]=String.fromCharCode(65+i);
+function c40decode(b){
+  if (b.length%2) throw new Error('C40: ungerade Bytezahl');
+  let out='';
+  for (let i=0;i<b.length;i+=2){
+    const b0=b[i], b1=b[i+1];
+    if (b0===254){ out+=String.fromCharCode(b1-1); continue; }
+    const v = b0*256+b1-1;
+    for (const x of [Math.floor(v/1600), Math.floor((v%1600)/40), v%40]) out += C40[x]||'';
+  }
+  return out;
+}
+function date3(b){ const n=(b[0]<<16)+(b[1]<<8)+b[2]; const s=String(n).padStart(8,'0'); return `${s.slice(4,8)}-${s.slice(0,2)}-${s.slice(2,4)}`; }
+
+/* ---- TLV ---- */
+function tlv(b, off, ber){
+  if (b.length-off < 2) throw new Error('TLV zu kurz');
+  const tag=b[off], ln0=b[off+1];
+  if (!ber || ln0<=127) return { tag, val: b.slice(off+2, off+2+ln0), n: 2+ln0 };
+  const n = ln0-128;
+  if (n<=0 || n===127) throw new Error('ungültige Längenoktette');
+  let len=0; for (let i=0;i<n;i++) len=(len<<8)|b[off+2+i];
+  const start = off+2+n;
+  return { tag, val: b.slice(start, start+len), n: (start+len)-off };
+}
+const TYPES = {
+  '1,93':'VISA','2,253':'Ankunftsnachweis','6,251':'Aufenthaltstitel','6,250':'Aufenthaltstitel (Zusatzblatt)',
+  '8,249':'Anschriftenaufkleber (Personalausweis)','12,249':'Anschriftenaufkleber (eAT)','10,248':'Wohnortaufkleber (Reisepass)',
+  '200,1':'TR-03171-Profil (z. B. Führungszeugnis)', '201,1':'TR-03171-Profil (z. B. Führungszeugnis)',
+};
+function parseSeal(b){
+  const r = { magic:b[0], version:b[1]+1 };
+  r.country = c40decode(b.slice(2,4)).trim();
+  let p;
+  if (r.version===4){
+    const s = c40decode(b.slice(4,8));
+    let n = parseInt(s.slice(4),10); if (!(n>0)) n=2;
+    const blen = Math.ceil(n/3)*2;
+    r.signer = s.slice(0,4); r.ref = c40decode(b.slice(8,8+blen)).slice(0,n);
+    p = 8+blen;
+  } else {
+    const s = c40decode(b.slice(4,10)).replace(/</g,'');
+    r.signer = s.slice(0,4); r.ref = s.slice(4); p = 10;
+  }
+  r.issue = date3(b.slice(p,p+3)); r.sigdate = date3(b.slice(p+3,p+6));
+  r.b6=b[p+6]; r.b7=b[p+7]; r.type = TYPES[`${r.b7},${r.b6}`] || 'unbekannter Dokumenttyp';
+  p += 8;
+  const feats=[]; let q=p;
+  while (true){
+    if (q>=b.length || q+1===b.length) throw new Error('kein Siegel-Header erkannt (Signaturmarker fehlt)');
+    if (b[q]===0xFF) break;
+    const t = tlv(b,q, r.version>=4);
+    if (t.n<=0) throw new Error('Feature ohne Fortschritt');
+    feats.push([t.tag, t.val]); q += t.n;
+  }
+  r.features = feats; r.signed = b.slice(0,q);
+  const sigT = tlv(b,q, r.version>=4); r.sig = sigT.val;
+  return r;
+}
+async function verifyAgainstCert(certDer, signed, sig){
+  const { spkiDer, curve } = extractSpkiAndCurve(certDer);
+  const key = await crypto.subtle.importKey('spki', spkiDer, {name:'ECDSA', namedCurve:curve}, true, ['verify']);
+  for (const h of ['SHA-256','SHA-384','SHA-512']){
+    const ok = await crypto.subtle.verify({name:'ECDSA', hash:h}, key, sig, signed);
+    if (ok) return `${h} / ${curve}`;
+  }
+  return null;
+}
+function b64ToBytes(b64){ const bin = atob(b64); const out = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
+function featText(val){
+  try { const t = new TextDecoder('utf-8', {fatal:true}).decode(val);
+    if ([...t].every(c => c.codePointAt(0) >= 9 && c.codePointAt(0) < 0x2500)) return t; } catch(e) {}
+  if (val.length===16) { const h=[...val].map(x=>x.toString(16).padStart(2,'0')); return `${h.slice(0,4).join('')}-${h.slice(4,6).join('')}-${h.slice(6,8).join('')}-${h.slice(8,10).join('')}-${h.slice(10,16).join('')}`; }
+  return [...val].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+
+/* ---- UI ---- */
+const drop = document.getElementById('drop'), fileInput = document.getElementById('file'),
+      statusEl = document.getElementById('status'), resultEl = document.getElementById('result');
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function setStatus(s){ statusEl.textContent = s; }
+
+async function handleFile(file){
+  resultEl.style.display = 'none'; resultEl.innerHTML = '';
+  setStatus('Lese Bild …');
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = async () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0);
+      const idata = ctx.getImageData(0,0,canvas.width,canvas.height);
+      setStatus('Suche QR-Code …');
+      const code = jsQR(idata.data, idata.width, idata.height, { inversionAttempts: 'attemptBoth' });
+      if (!code) { setStatus('Kein QR-Code gefunden. Bitte näher ran oder schärferes Bild versuchen.'); return; }
+      let bytes;
+      if (code.binaryData && code.binaryData.length) bytes = new Uint8Array(code.binaryData);
+      else bytes = Uint8Array.from([...code.data].map(c => c.charCodeAt(0) & 0xff));
+      setStatus('Werte Siegel aus …');
+      await evaluate(bytes);
+      setStatus('');
+    } catch (e) {
+      setStatus(''); showVerdict(false, 'Konnte Bild nicht verarbeiten: ' + e.message);
+    } finally { URL.revokeObjectURL(url); }
+  };
+  img.onerror = () => { setStatus('Bilddatei konnte nicht geladen werden.'); };
+  img.src = url;
+}
+
+function showVerdict(ok, text){
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = `<div class="verdict ${ok?'ok':'fail'}"><span class="dot"></span>${text}</div>`;
+}
+function row(k,v){ return `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`; }
+function chip(ok,textOk,textFail){ return `<span class="chip ${ok?'ok':'fail'}">${ok?textOk:textFail}</span>`; }
+
+async function evaluate(bytes){
+  let r;
+  try { r = parseSeal(bytes); }
+  catch(e){ showVerdict(false, 'Kein gültiger Siegel-Header – vermutlich kein echtes Dokumentsiegel (' + e.message + ').'); return; }
+
+  const candidates = CERTS.filter(c => c.signer===r.signer);
+  let best = null;
+  for (const c of candidates){
+    const der = b64ToBytes(c.b64);
+    const sha1 = await sha1Hex(der);
+    const matchKey = (c.ref === r.ref), matchSha = (sha1 === r.ref);
+    if (!matchKey && !matchSha) continue;
+    try {
+      const [nb,na] = extractValidity(der);
+      const [pb,pa] = extractPkup(der);
+      const effNb = pb ? (pb > nb ? pb : nb) : nb, effNa = pa ? (pa < na ? pa : na) : na;
+      const inWindow = r.sigdate >= effNb && r.sigdate <= effNa;
+      const sigRes = await verifyAgainstCert(der, r.signed, r.sig);
+      best = { file:c.file, nb:effNb, na:effNa, inWindow, sigRes, matchVia: matchSha?'SHA-1':'Schlüssel' };
+      if (sigRes) break;
+    } catch(e) { best = best || { file:c.file, error: e.message }; }
+  }
+
+  const overallOk = !!(best && !best.error && best.sigRes && best.inWindow);
+  showVerdict(overallOk,
+    overallOk ? 'Signatur gültig und im Gültigkeitszeitraum'
+    : (best ? 'Zertifikat gefunden, aber Prüfung fehlgeschlagen' : 'Kein passendes Zertifikat gefunden (anderer Dokumenttyp oder nicht eingebettet)'));
+
+  let html = '<table>';
+  html += row('Land', r.country);
+  html += row('Aussteller-ID', `${r.signer} <span class="mono" style="color:var(--dim)">(${r.ref})</span>`);
+  html += row('Dokumenttyp', r.type);
+  html += row('Ausgestellt', r.issue);
+  html += row('Signaturdatum', r.sigdate);
+  if (best && !best.error){
+    html += row('Zertifikat', `${best.file} ${chip(true, 'gefunden via '+best.matchVia, '')}`);
+    html += row('Gültigkeitsfenster', `${best.nb} … ${best.na} ${chip(best.inWindow,'Signaturdatum im Fenster','außerhalb des Fensters')}`);
+    html += row('Signaturprüfung', best.sigRes ? `${chip(true,'kryptografisch gültig','')} <span class="mono" style="color:var(--dim)">(${best.sigRes})</span>` : chip(false,'','ungültig / nicht verifizierbar'));
+  } else if (best && best.error) {
+    html += row('Zertifikat', `${best.file} — übersprungen (${best.error})`);
+  }
+  html += '</table>';
+  html += `<details><summary>${r.features.length} Datenfelder im Siegel anzeigen</summary>` +
+    r.features.map(([t,v]) => `<div class="feat"><b>Tag ${t}:</b> ${escapeHtml(featText(v))}</div>`).join('') + '</details>';
+  resultEl.insertAdjacentHTML('beforeend', html);
+}
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+</script>
+</body>
+</html>
